@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pivní Deník</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        :root {
+            --beer-gold: #f39c12;
+            --beer-dark: #2c3e50;
+        }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            margin: 0; padding: 0; background: #f8f9fa; color: var(--beer-dark);
+        }
+        .container { padding: 20px; max-width: 500px; margin: 0 auto; }
+        h1 { font-size: 1.5rem; margin-bottom: 20px; color: var(--beer-dark); }
+        
+        /* Styl skeneru */
+        #reader { 
+            width: 100% !important; 
+            border: none !important; 
+            border-radius: 15px; 
+            overflow: hidden; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            background: black;
+        }
+        #reader__dashboard_section_csr button {
+            background: var(--beer-gold) !important;
+            border: none !important;
+            padding: 10px 20px !important;
+            color: white !important;
+            border-radius: 8px !important;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        /* Karta výsledku */
+        #vysledek { 
+            display: none; background: white; padding: 20px; 
+            border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-top: 20px; text-align: left;
+        }
+        .label { color: #7f8c8d; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 2px; }
+        .value { font-size: 1.2rem; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        
+        .btn {
+            display: block; width: 100%; padding: 15px; margin-top: 10px;
+            border: none; border-radius: 10px; font-size: 1rem; font-weight: bold;
+            cursor: pointer; transition: transform 0.1s;
+        }
+        .btn-primary { background: var(--beer-gold); color: white; }
+        .btn-secondary { background: #ecf0f1; color: var(--beer-dark); }
+        .btn:active { transform: scale(0.98); }
+
+        #loading { display: none; margin: 20px 0; font-style: italic; color: #7f8c8d; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🍺 Pivní Skener</h1>
+
+    <div id="reader"></div>
+    <div id="loading">Hledám pivo v databázi...</div>
+
+    <div id="vysledek">
+        <div class="label">Pivovar</div>
+        <div id="pivovar" class="value">-</div>
+        
+        <div class="label">Název piva</div>
+        <div id="nazev" class="value">-</div>
+        
+        <div class="label">Obsah alkoholu</div>
+        <div id="alkohol" class="value">-</div>
+
+        <button class="btn btn-primary" onclick="ulozitPivo()">Uložit do deníku</button>
+        <button class="btn btn-secondary" onclick="restartScan()">Skenovat další</button>
+    </div>
+</div>
+
+<script>
+    let lastResult = null;
+    const html5QrCode = new Html5Qrcode("reader");
+
+    function startScanner() {
+        const config = { 
+            fps: 10, 
+            qrbox: { width: 250, height: 150 },
+            aspectRatio: 1.0 
+        };
+
+        // Pokusí se spustit zadní kameru ("environment")
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            config, 
+            onScanSuccess
+        ).catch(err => {
+            console.error("Chyba kamery:", err);
+            alert("Kameru se nepodařilo spustit. Ujistěte se, že používáte HTTPS a povolili jste přístup.");
+        });
+    }
+
+    function onScanSuccess(decodedText) {
+        html5QrCode.stop();
+        document.getElementById('reader').style.display = 'none';
+        document.getElementById('loading').style.display = 'block';
+
+        fetch(`https://world.openfoodfacts.org/api/v0/product/${decodedText}.json`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('vysledek').style.display = 'block';
+                
+                if (data.status === 1) {
+                    const p = data.product;
+                    lastResult = {
+                        pivovar: p.brands || "Neznámý",
+                        nazev: p.product_name || "Neznámé pivo",
+                        alkohol: p.nutriments?.alcohol ? p.nutriments.alcohol + "%" : "Neuvedeno"
+                    };
+                } else {
+                    lastResult = { pivovar: "Neznámý", nazev: "Nenalezeno (Kód: " + decodedText + ")", alkohol: "-" };
+                }
+
+                document.getElementById('pivovar').innerText = lastResult.pivovar;
+                document.getElementById('nazev').innerText = lastResult.nazev;
+                document.getElementById('alkohol').innerText = lastResult.alkohol;
+            });
+    }
+
+    function restartScan() {
+        document.getElementById('vysledek').style.display = 'none';
+        document.getElementById('reader').style.display = 'block';
+        startScanner();
+    }
+
+    function ulozitPivo() {
+        alert("Pivo " + lastResult.nazev + " bylo uloženo! (Zatím jen jako test)");
+        restartScan();
+    }
+
+    // Spuštění po načtení stránky
+    window.addEventListener('load', startScanner);
+</script>
+
+</body>
+</html>
